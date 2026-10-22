@@ -291,3 +291,70 @@ These references identify the implementation artifacts used to prepare this repo
 7. `mininet_sdn/README_MININET.md` — Mininet setup, demo procedure, and limitations.
 8. `mininet_sdn/controller_adaptive.py`, `mininet_sdn/controller_static.py` — OS-Ken controller implementations.
 9. `mininet_sdn/sample_run_logs/` — captured output from the separate Mininet demonstration.
+
+## 18. Enterprise extension implementation and validation
+
+The enterprise mode adds a second topology and result artifact while preserving the original baseline command and schema. It retains the original eight switches, assigns them to Headquarters (s1-s4), Branch Office 1 (s5, s7), and Branch Office 2 (s6, s8), adds three core links for additional path diversity, and expands the enterprise graph to 14 hosts and 29 total links. Enterprise data is configured in `src/enterprise_config.py` and built by `src/enterprise_topology.py`.
+
+### 18.1 Segmentation and addressing
+
+| VLAN | Department / function | Subnet | Gateway | Hosts |
+|---:|---|---|---|---|
+| 10 | Administration | 10.10.10.0/24 | 10.10.10.1 | h1 |
+| 20 | Finance | 10.10.20.0/24 | 10.10.20.1 | h2 |
+| 30 | IT | 10.10.30.0/24 | 10.10.30.1 | h3 |
+| 40 | Branch Office 1 users | 10.10.40.0/24 | 10.10.40.1 | h4, h5, h13 |
+| 41 | Branch Office 2 users | 10.10.41.0/24 | 10.10.41.1 | h6, h7, h14 |
+| 50 | Shared service endpoints | 10.10.50.0/24 | 10.10.50.1 | h8-h11 |
+| 99 | Management | 10.10.99.0/24 | 10.10.99.1 | h12 |
+
+Enterprise Mininet mode configures host-facing OVS ports as access ports and switch links as trunks. A controller-proxied gateway MAC supports inter-subnet forwarding in this emulation. Baseline mode retains its original six hosts, untagged topology, IP addresses, and routing behavior.
+
+### 18.2 Access policy
+
+The controller evaluates source/destination role, protocol, and service port before installing any IPv4 path rule. Unmatched inter-VLAN traffic is denied and receives a high-priority drop rule. The configured policy permits branch DNS (TCP/UDP 53), branch HTTP/HTTPS (TCP 80/443), finance application access (TCP 8443), authorized finance/admin file access (TCP 21), and management access from admin/IT. Branch-to-branch ICMP is allowed while other branch-to-branch traffic is denied. Explicit service reply allowances are limited to each permitted service port.
+
+The enterprise simulation evaluated seven policy cases; all seven matched their expected decisions. This is a unit-level policy result. The live Mininet test is implemented in `mininet_sdn/test_enterprise_policy.py`; it starts HTTP endpoints on h9 and h11 and checks both allowed and denied packet forwarding. The current Windows host has no Mininet or OS-Ken installation, so that live integration test was not run in this environment.
+
+DHCP, a DNS daemon, and FTP/file-transfer daemon are not implemented. IPs are configured statically. The host roles h8 (DNS), h10 (file), and h11 (finance app) describe intended endpoints; the policy test starts HTTP only on h9 and h11. Those remaining services are future work rather than completed features.
+
+### 18.3 Enterprise simulation results
+
+The enterprise mode ran 24 intervals with 22 flows per interval and seed 17. The same generated flow demand is routed through both strategies. The saved output is `results/enterprise_results.json`; it is separate from the original `results/results.json`.
+
+| Metric | Static | Adaptive | Enterprise run result |
+|---|---:|---:|---:|
+| Mean interval-average flow latency | Baseline | — | 5.4% lower with adaptive routing |
+| Mean per-interval maximum link utilization | Baseline | — | 34.3% lower with adaptive routing |
+| Simulated dropped flows | 12 | 0 | 100% fewer for this workload |
+| Classifier held-out accuracy | — | 99.7% | Same synthetic classifier split design |
+
+These enterprise numbers are from the graph simulation and are not live Mininet measurements. The dashboard shows them as a separate enterprise section and leaves the original baseline section intact.
+
+### 18.4 Failover and live measurement status
+
+The graph-level failure scenario removes link s5-s7 between a selected Branch 1 path and HQ service h9. The original path was `h4-s5-s7-s4-h9`; after removing s5-s7, the graph found `h4-s5-s2-s4-h9`. This proves an alternate path exists in the modeled graph, but produces no detection time, recovery time, or packet-loss measurement.
+
+The live Mininet script `mininet_sdn/test_enterprise_failover.py` toggles s5-s8 while continuous ping runs from h4 to h6. It records ping loss/recovery and reads structured controller link-state and route-selection timestamps. The runner is `mininet_sdn/run_enterprise_demo.sh [static|adaptive]`. On successful Linux runs, policy and failover payloads are saved separately and embedded into the standalone dashboard. These measurements remain unavailable until the scripts run on a supported Linux/Mininet host; this Windows environment does not provide Mininet, OS-Ken, Open vSwitch, or Linux network namespaces.
+
+### 18.5 Regression checks and commands
+
+Validation performed in the development environment:
+
+- `python -m compileall -q src mininet_sdn tests` — passed.
+- `python -m unittest discover -s tests -v` — ten tests passed for baseline topology preservation, enterprise topology composition, ACL decisions, source/VLAN binding, logical alternate-path selection, link-state updates, and packet-route congestion/failure handling.
+- `python src/run_experiment.py --mode enterprise` — completed and generated enterprise metrics and diagram.
+- The original `python src/run_experiment.py` completed after implementation and reproduced the baseline summary: 15.2% latency improvement, 38.8% reduction in mean interval peak utilization, 99.7% classifier accuracy, and 23 static vs 0 adaptive simulated drops.
+- Mininet/OS-Ken integration tests — not run; the packages and Linux networking environment are unavailable on this Windows host.
+
+Run the original simulation with `python src/run_experiment.py`; run enterprise simulation with `python src/run_experiment.py --mode enterprise`; run unit tests with `python -m unittest discover -s tests -v`. On Ubuntu/Debian with Mininet, Open vSwitch, OS-Ken, and root privileges, run `cd mininet_sdn && sudo ./run_enterprise_demo.sh adaptive` or use `static` for the baseline controller.
+
+## 19. Interactive packet-flow visualization
+
+The enterprise dashboard adds a standalone network lab with a device canvas, link and device inspector, event list, and controls for source, destination, traffic class, routing mode, ACL protocol/port, link scenario, and animation speed. The canvas uses the enterprise graph nodes and links exported by `run_experiment.py`; it does not create extra network devices. Dragging pans, the mouse wheel zooms, and double-click restores the initial view.
+
+Route decisions are calculated in Python by `select_flow_route` from `controller_sim.py`. Static mode uses the simulation's base-delay edge weight. Adaptive mode uses the existing current-utilization cubic penalty, predicted-utilization cubic penalty, and traffic-priority factor. The standalone dashboard receives precomputed route choices and policy decisions so it can remain a local HTML file without a backend or a duplicate browser routing implementation. The optional s5-s7 scenarios set that link to 100% configured capacity for an illustrative congestion input or remove it from the graph; these are explicit simulation scenarios, not measured telemetry. Per-flow latency/utilization is not reported because these dashboard animations do not run an interval experiment.
+
+Each permitted flow is animated hop by hop along its saved route and gets its own marker/color and event entries. Enterprise ACL outcomes are looked up from the shared Python policy module; denied flows are stopped before forwarding. Pause/resume, stop-all, and reset controls manage active flows. The browser displays local timestamps for animation events and does not present them as controller timestamps or live packet events. Live Mininet event integration remains a separate future interface; this page does not claim a Mininet connection.
+
+To regenerate the standalone dashboard's enterprise topology and route data, run `python src/run_experiment.py --mode enterprise`, then open `index.html` in a browser. On Windows, `Start-Process .\\index.html` opens the local page. The baseline run and `results/results.json` remain separate and unchanged.

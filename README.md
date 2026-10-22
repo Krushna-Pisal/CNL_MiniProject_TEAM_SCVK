@@ -167,6 +167,129 @@ which when you present it:
   AI-driven controller detects real congestion on a live link and reroutes
   a new flow around it while the baseline controller doesn't.
 
-Presenting both makes the strongest case: the simulation shows the idea
-holds up quantitatively at scale, and the Mininet deployment proves the
-same logic runs as a real, working SDN controller.
+The simulation provides the quantitative comparison; the Mininet sample
+logs provide a separate OpenFlow demonstration that should be rerun on a
+supported Linux host to validate the current environment and controller.
+
+## 9. Enterprise multi-branch extension
+
+The opt-in enterprise mode extends the same eight switches rather than
+changing the original run. It models Headquarters (s1-s4), Branch Office 1
+(s5, s7), Branch Office 2 (s6, s8), 14 department/client/service endpoints,
+and three additional redundant core links. `src/enterprise_topology.py`
+is separate from `src/topology.py`, so the original six-host simulation is
+unchanged. The enterprise simulator writes `results/enterprise_results.json`
+and `results/enterprise_topology.png`; it does not overwrite the baseline
+results. Running it embeds that generated dataset in the self-contained
+`index.html` enterprise section.
+
+### VLAN and subnet plan
+
+| VLAN | Segment | Subnet / gateway | Example endpoints |
+|---:|---|---|---|
+| 10 | Administration | 10.10.10.0/24 · .1 | h1 |
+| 20 | Finance | 10.10.20.0/24 · .1 | h2 |
+| 30 | IT | 10.10.30.0/24 · .1 | h3 |
+| 40 | Branch 1 users | 10.10.40.0/24 · .1 | h4, h5, h13 |
+| 41 | Branch 2 users | 10.10.41.0/24 · .1 | h6, h7, h14 |
+| 50 | Shared service endpoints | 10.10.50.0/24 · .1 | h8 DNS, h9 HTTP, h10 files, h11 finance app |
+| 99 | Management | 10.10.99.0/24 · .1 | h12 |
+
+The VLAN and address metadata are defined once in `src/enterprise_config.py`.
+Enterprise Mininet mode tags host-facing OVS ports as access ports and sets
+switch-to-switch ports as trunks. The controller performs centralized
+inter-VLAN forwarding after evaluating the same policy module. The gateway
+addresses are controller-proxied in this emulation; this is a teaching
+implementation, not a separate hardware router or production DHCP service.
+
+### Access policy enforced by the controller
+
+| Source | Destination | Policy |
+|---|---|---|
+| Branch users | Shared DNS | Permit TCP/UDP 53 |
+| Branch users | Shared HTTP | Permit TCP 80/443 |
+| Branch 1 / Branch 2 | Each other | Permit ICMP; deny other inter-branch traffic |
+| Finance | Finance application | Permit TCP 8443 and explicit service replies |
+| Admin / Finance | File endpoint | Permit TCP 21 and explicit replies |
+| Admin / IT | Management endpoint | Permit TCP 22/ICMP and authorized replies |
+| Other inter-VLAN pairs | Any | Deny by default |
+
+Denied IPv4 flows receive a higher-priority drop rule. The Mininet policy
+test starts HTTP services on the shared web and finance endpoints, checks
+permitted HTTP across VLANs, tests permitted branch/IT connectivity, and
+checks blocked branch-to-finance and finance-to-management traffic.
+
+### Routing and failover
+
+Static and adaptive controllers retain their existing route algorithms. The
+adaptive cost remains `delay + 35 × current_utilization³ × priority_factor
++ 12 × forecast_utilization³ × priority_factor`. OpenFlow port-status events
+remove or restore the corresponding known link in the controller graph,
+clear cached IPv4 routes, and invalidate installed IPv4 path rules. New
+flows are then calculated over the current graph. No LLDP discovery is used;
+the controller updates the hardcoded Mininet topology from explicit port
+events. The failover script toggles the s5-s8 link, records continuous-ping
+loss/recovery, and collects controller link/route timestamps when available.
+
+### Run commands
+
+```bash
+# Preserve and run the original baseline
+python src/run_experiment.py
+
+# New enterprise graph, separate outputs, and enterprise dashboard data
+python src/run_experiment.py --mode enterprise
+
+# Open the standalone dashboard on Windows after generating enterprise data
+Start-Process .\index.html
+
+# Fast unit tests for graph, policy, and logical failover behavior
+python -m unittest discover -s tests -v
+
+# On Ubuntu/Debian with Mininet, OVS, OS-Ken, and root privileges
+cd mininet_sdn
+sudo ./run_enterprise_demo.sh static
+sudo ./run_enterprise_demo.sh adaptive
+```
+
+Live enterprise Mininet runs write controller events to
+`mininet_sdn/controller_enterprise.log` and the latest measured failover
+details to `results/mininet_failover_latest.json`. The enterprise simulation
+also writes policy logic results and a graph-only alternate-path scenario;
+those are clearly labeled as simulation output and are not live measurements.
+After the Linux scripts run, live policy and failover results are embedded in
+the dashboard and saved separately as `results/mininet_policy_latest.json`
+and `results/mininet_failover_latest.json`.
+
+### Current scope and limitations
+
+- Enterprise simulation results from this run: 24 intervals × 22 flows,
+  5.4% lower mean interval latency, 34.3% lower mean interval peak
+  utilization, and 12 static vs 0 adaptive modeled drops. These values are
+  separate from the original baseline results.
+- Seven enterprise policy logic cases pass; these are unit-level policy
+  checks, not packet measurements.
+- Ten Python unit tests pass. This Windows environment does not include
+  Mininet or OS-Ken, so live VLAN/ACL and link-failure integration tests have
+  not been run here.
+- Enterprise endpoints use static IP addresses. DHCP is not implemented.
+  `h8`, `h10`, and `h11` are configured as DNS/file/finance service endpoints,
+  but only the live policy test starts HTTP on h9 and h11. A DNS daemon and
+  FTP/file-transfer daemon remain future work.
+- The browser dashboard reports generated enterprise simulation data and
+  graph failover. It does not display a live controller feed. The live
+  Mininet event log and failover JSON are separate artifacts.
+
+### Interactive packet-flow lab
+
+The enterprise section in `index.html` includes a zoomable/pannable network
+canvas with device/link inspectors, source/destination and traffic-class
+selectors, static/adaptive choices, multiple animated simulated flows,
+pause/resume/stop/reset controls, and an event list. Run the enterprise command
+above to embed graph-derived topology, route choices, and policy outcomes.
+Routes are selected in Python by `select_flow_route` using the controller's
+static delay weight or adaptive cost formula, then the standalone browser
+animates those saved routes; it does not run a second routing engine. The
+optional `s5-s7` congestion/failure choices are graph simulation scenarios.
+The canvas does not claim to display real packets, measured per-flow latency,
+or live Mininet telemetry.

@@ -11,13 +11,19 @@ Run with the launcher (from mininet_sdn/):
 """
 
 import networkx as nx
+import json
+import time
 from os_ken.base import app_manager
 from os_ken.controller import ofp_event
 from os_ken.controller.handler import CONFIG_DISPATCHER, MAIN_DISPATCHER, set_ev_cls
 from os_ken.ofproto import ofproto_v1_3
-from os_ken.lib.packet import packet, ethernet, arp, ipv4, ether_types
+from os_ken.lib.packet import packet, ethernet, vlan, arp, ipv4, tcp, udp, icmp, ether_types
 
-from common import load_network, out_port_on
+from common import (
+    allowed_enterprise_flow, delete_ipv4_flows, first_packet_actions,
+    gateway_record, host_record, install_path_flows, load_network, make_flow_match,
+    out_port_on, update_link_state, validate_enterprise_source,
+)
 
 
 class StaticShortestPathController(app_manager.OSKenApp):
@@ -27,6 +33,7 @@ class StaticShortestPathController(app_manager.OSKenApp):
         super().__init__(*args, **kwargs)
         self.G, self.mac_to_attach, self.ip_to_attach, self.cfg = load_network()
         self.datapaths = {}
+        self.blocked_flows = 0
         self.installed_flows = {}  # (dpid, ip_src, ip_dst) -> first_hop_out_port -- avoids
                                        # redundant recomputation if the switch's software
                                        # datapath punts a few extra packets before its new
@@ -76,6 +83,18 @@ class StaticShortestPathController(app_manager.OSKenApp):
             actions = [parser.OFPActionOutput(out_port)]
             self._add_flow(dp, priority, match, actions, idle_timeout=30)
 
+    @set_ev_cls(ofp_event.EventOFPPortStatus, MAIN_DISPATCHER)
+    def port_status_handler(self, ev):
+        msg, dp = ev.msg, ev.msg.datapath
+        ofp = dp.ofproto
+        up = msg.reason != ofp.OFPPR_DELETE and not (msg.desc.state & ofp.OFPPS_LINK_DOWN)
+        edge = update_link_state(self.G, self.cfg, dp.id, msg.desc.port_no, up)
+        if edge:
+            self.installed_flows.clear()
+            delete_ipv4_flows(self.datapaths)
+            print(json.dumps({"event": "link_state", "controller": "static",
+                              "link": list(edge), "up": up, "time_unix": time.time()}))
+
     # ---------------- packet-in: ARP proxy + first-packet routing ----------------
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
     def packet_in_handler(self, ev):
@@ -85,12 +104,16 @@ class StaticShortestPathController(app_manager.OSKenApp):
         in_port = msg.match["in_port"]
         pkt = packet.Packet(msg.data)
         eth = pkt.get_protocols(ethernet.ethernet)[0]
+        eth_type = eth.ethertype
+        vlan_headers = pkt.get_protocols(vlan.vlan)
+        if vlan_headers:
+            eth_type = vlan_headers[0].ethertype
 
-        if eth.ethertype == ether_types.ETH_TYPE_ARP:
+        if eth_type == ether_types.ETH_TYPE_ARP:
             self._handle_arp(dp, in_port, pkt, msg)
             return
 
-        if eth.ethertype == ether_types.ETH_TYPE_IP:
+        if eth_type == ether_types.ETH_TYPE_IP:
             self._handle_ip(dp, in_port, pkt, msg)
             return
 
@@ -103,9 +126,32 @@ class StaticShortestPathController(app_manager.OSKenApp):
         if arp_pkt.opcode != arp.ARP_REQUEST:
             return
         target_ip = arp_pkt.dst_ip
-        if target_ip not in self.ip_to_attach:
+        if self.cfg.get("mode") == "enterprise":
+            ingress_host = next((h for h in self.cfg.get("hosts", [])
+                                 if h.get("dpid") == dp.id and h.get("port") == in_port), None)
+            if (ingress_host is None or arp_pkt.src_ip != ingress_host.get("ip") or
+                    arp_pkt.src_mac.lower() != ingress_host.get("mac", "").lower()):
+                return
+        gateway = gateway_record(self.cfg, target_ip)
+        if gateway:
+            ingress_host = next((h for h in self.cfg.get("hosts", [])
+                                 if h.get("dpid") == dp.id and h.get("port") == in_port), None)
+            if self.cfg.get("mode") == "enterprise" and (
+                ingress_host is None or int(ingress_host["vlan"]) != int(gateway["vlan"])
+            ):
+                return
+            target_mac = gateway["mac"]
+        elif target_ip in self.ip_to_attach:
+            target_host = host_record(self.cfg, target_ip)
+            ingress_host = next((h for h in self.cfg.get("hosts", [])
+                                 if h.get("dpid") == dp.id and h.get("port") == in_port), None)
+            if self.cfg.get("mode") == "enterprise" and target_host and ingress_host and (
+                int(target_host["vlan"]) != int(ingress_host["vlan"])
+            ):
+                return
+            _, _, target_mac = self.ip_to_attach[target_ip]
+        else:
             return
-        _, _, target_mac = self.ip_to_attach[target_ip]
 
         eth = pkt.get_protocols(ethernet.ethernet)[0]
         reply_eth = ethernet.ethernet(dst=eth.src, src=target_mac, ethertype=ether_types.ETH_TYPE_ARP)
@@ -125,38 +171,100 @@ class StaticShortestPathController(app_manager.OSKenApp):
         ip_pkt = pkt.get_protocols(ipv4.ipv4)[0]
         src_ip, dst_ip = ip_pkt.src, ip_pkt.dst
 
+        if self.cfg.get("mode") == "enterprise":
+            vlan_id = msg.match.get("vlan_vid")
+            if vlan_id is not None:
+                vlan_id = int(vlan_id) & 0x0FFF
+            else:
+                vlan_headers = pkt.get_protocols(vlan.vlan)
+                vlan_id = vlan_headers[0].vid if vlan_headers else None
+            src_eth = pkt.get_protocols(ethernet.ethernet)[0]
+            source_ok, source_reason = validate_enterprise_source(
+                self.cfg, dp.id, in_port, src_ip, src_eth.src, vlan_id)
+            if not source_ok:
+                print(json.dumps({"event": "source_binding_denied", "controller": "static",
+                                  "source": src_ip, "reason": source_reason,
+                                  "dpid": dp.id, "port": in_port}))
+                return
+
         if dst_ip not in self.ip_to_attach:
             return  # unknown destination, drop silently
 
         dst_dpid, dst_port, _ = self.ip_to_attach[dst_ip]
         src_dpid = dp.id
 
+        proto, sport, dport = "other", 0, 0
+        tcp_pkt = pkt.get_protocols(tcp.tcp)
+        if tcp_pkt:
+            proto, sport, dport = "tcp", tcp_pkt[0].src_port, tcp_pkt[0].dst_port
+        udp_pkt = pkt.get_protocols(udp.udp)
+        if udp_pkt:
+            proto, sport, dport = "udp", udp_pkt[0].src_port, udp_pkt[0].dst_port
+        if pkt.get_protocols(icmp.icmp):
+            proto = "icmp"
+        if self.cfg.get("mode") == "enterprise":
+            allowed, reason = allowed_enterprise_flow(self.cfg, src_ip, dst_ip, proto, dport, sport)
+            if not allowed:
+                self.blocked_flows += 1
+                src_host = host_record(self.cfg, src_ip)
+                deny_match = make_flow_match(parser, self.cfg, src_ip, dst_ip,
+                                             proto if proto in {"tcp", "udp", "icmp"} else None,
+                                             sport, dport)
+                if src_host and proto not in {"tcp", "udp", "icmp"}:
+                    self._add_flow(dp, 200, parser.OFPMatch(
+                        eth_type=ether_types.ETH_TYPE_IP, ipv4_src=src_ip, ipv4_dst=dst_ip,
+                        vlan_vid=0x1000 | int(src_host["vlan"]), ip_proto=ip_pkt.proto), [])
+                else:
+                    self._add_flow(dp, 200, deny_match, [])
+                print(json.dumps({"event": "policy_denied", "controller": "static",
+                                  "source": src_ip, "destination": dst_ip,
+                                  "protocol": proto, "port": dport, "reason": reason,
+                                  "total_blocked": self.blocked_flows}))
+                return
+
         cache_key = (src_dpid, src_ip, dst_ip)
         if cache_key in self.installed_flows:
             out_port = self.installed_flows[cache_key]
             out = parser.OFPPacketOut(
                 datapath=dp, buffer_id=msg.buffer_id, in_port=in_port,
-                actions=[parser.OFPActionOutput(out_port)],
+                actions=(first_packet_actions(parser, out_port, self.cfg, src_ip, dst_ip)
+                         if self.cfg.get("mode") == "enterprise" else [parser.OFPActionOutput(out_port)]),
                 data=None if msg.buffer_id != ofp.OFP_NO_BUFFER else msg.data)
             dp.send_msg(out)
             return
 
-        if src_dpid == dst_dpid:
-            path = [src_dpid]
+        try:
+            if src_dpid == dst_dpid:
+                path = [src_dpid]
+            else:
+                path = self._compute_path(src_dpid, dst_dpid)
+        except (nx.NetworkXNoPath, nx.NodeNotFound):
+            print(json.dumps({"event": "route_unavailable", "controller": "static",
+                              "source": src_ip, "destination": dst_ip}))
+            return
+
+        if self.cfg.get("mode") == "enterprise":
+            out_port = install_path_flows(
+                self.G, path, self.datapaths, self.cfg, src_ip, dst_ip, dst_port,
+                proto=proto if proto in {"tcp", "udp", "icmp"} else None,
+                src_port=sport, dst_port=dport,
+            )
         else:
-            path = self._compute_path(src_dpid, dst_dpid)
+            match_kwargs = dict(eth_type=ether_types.ETH_TYPE_IP, ipv4_src=src_ip, ipv4_dst=dst_ip,
+                                _final_out_port=dst_port)
+            self._install_path(path, match_kwargs)
+            out_port = out_port_on(self.G, src_dpid, path[1]) if len(path) > 1 else dst_port
 
-        match_kwargs = dict(eth_type=ether_types.ETH_TYPE_IP, ipv4_src=src_ip, ipv4_dst=dst_ip,
-                             _final_out_port=dst_port)
-        self._install_path(path, match_kwargs)
         print(f"[static] {src_ip} -> {dst_ip} routed via switches {path}")
-
-        # forward the packet that triggered this immediately (don't drop it
-        # while the flow rules above are still being pushed)
-        out_port = out_port_on(self.G, src_dpid, path[1]) if len(path) > 1 else dst_port
+        print(json.dumps({"event": "route_selected", "controller": "static",
+                          "source": src_ip, "destination": dst_ip, "path": path,
+                          "time_unix": time.time()}))
+        cache_key = (src_dpid, src_ip, dst_ip)
         self.installed_flows[cache_key] = out_port
+        actions = (first_packet_actions(parser, out_port, self.cfg, src_ip, dst_ip)
+                   if self.cfg.get("mode") == "enterprise" else [parser.OFPActionOutput(out_port)])
         out = parser.OFPPacketOut(
             datapath=dp, buffer_id=msg.buffer_id, in_port=in_port,
-            actions=[parser.OFPActionOutput(out_port)],
+            actions=actions,
             data=None if msg.buffer_id != ofp.OFP_NO_BUFFER else msg.data)
         dp.send_msg(out)
