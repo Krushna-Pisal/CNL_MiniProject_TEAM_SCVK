@@ -1,0 +1,178 @@
+{
+  "links": [
+    {
+      "dpid1": 1,
+      "port1": 1,
+      "dpid2": 2,
+      "port2": 1,
+      "capacity_mbps": 100,
+      "delay_ms": 2,
+      "name1": "s1",
+      "name2": "s2"
+    },
+    {
+      "dpid1": 1,
+      "port1": 2,
+      "dpid2": 3,
+      "port2": 1,
+      "capacity_mbps": 100,
+      "delay_ms": 3,
+      "name1": "s1",
+      "name2": "s3"
+    },
+    {
+      "dpid1": 2,
+      "port1": 2,
+      "dpid2": 4,
+      "port2": 1,
+      "capacity_mbps": 80,
+      "delay_ms": 2,
+      "name1": "s2",
+      "name2": "s4"
+    },
+    {
+      "dpid1": 3,
+      "port1": 2,
+      "dpid2": 4,
+      "port2": 2,
+      "capacity_mbps": 60,
+      "delay_ms": 2,
+      "name1": "s3",
+      "name2": "s4"
+    },
+    {
+      "dpid1": 2,
+      "port1": 3,
+      "dpid2": 5,
+      "port2": 1,
+      "capacity_mbps": 60,
+      "delay_ms": 4,
+      "name1": "s2",
+      "name2": "s5"
+    },
+    {
+      "dpid1": 3,
+      "port1": 3,
+      "dpid2": 6,
+      "port2": 1,
+      "capacity_mbps": 80,
+      "delay_ms": 3,
+      "name1": "s3",
+      "name2": "s6"
+    },
+    {
+      "dpid1": 4,
+      "port1": 3,
+      "dpid2": 7,
+      "port2": 1,
+      "capacity_mbps": 100,
+      "delay_ms": 2,
+      "name1": "s4",
+      "name2": "s7"
+    },
+    {
+      "dpid1": 5,
+      "port1": 2,
+      "dpid2": 7,
+      "port2": 2,
+      "capacity_mbps": 60,
+      "delay_ms": 2,
+      "name1": "s5",
+      "name2": "s7"
+    },
+    {
+      "dpid1": 6,
+      "port1": 2,
+      "dpid2": 7,
+      "port2": 3,
+      "capacity_mbps": 60,
+      "delay_ms": 2,
+      "name1": "s6",
+      "name2": "s7"
+    },
+    {
+      "dpid1": 5,
+      "port1": 3,
+      "dpid2": 8,
+      "port2": 1,
+      "capacity_mbps": 80,
+      "delay_ms": 3,
+      "name1": "s5",
+      "name2": "s8"
+    },
+    {
+      "dpid1": 6,
+      "port1": 3,
+      "dpid2": 8,
+      "port2": 2,
+      "capacity_mbps": 100,
+      "delay_ms": 2,
+      "name1": "s6",
+      "name2": "s8"
+    },
+    {
+      "dpid1": 7,
+      "port1": 4,
+      "dpid2": 8,
+      "port2": 3,
+      "capacity_mbps": 100,
+      "delay_ms": 1,
+      "name1": "s7",
+      "name2": "s8"
+    }
+  ],
+  "hosts": [
+    {
+      "name": "h1",
+      "ip": "10.0.0.1",
+      "mac": "00:00:00:00:00:01",
+      "dpid": 1,
+      "port": 3
+    },
+    {
+      "name": "h2",
+      "ip": "10.0.0.2",
+      "mac": "00:00:00:00:00:02",
+      "dpid": 2,
+      "port": 4
+    },
+    {
+      "name": "h3",
+      "ip": "10.0.0.3",
+      "mac": "00:00:00:00:00:03",
+      "dpid": 3,
+      "port": 4
+    },
+    {
+      "name": "h4",
+      "ip": "10.0.0.4",
+      "mac": "00:00:00:00:00:04",
+      "dpid": 6,
+      "port": 4
+    },
+    {
+      "name": "h5",
+      "ip": "10.0.0.5",
+      "mac": "00:00:00:00:00:05",
+      "dpid": 7,
+      "port": 5
+    },
+    {
+      "name": "h6",
+      "ip": "10.0.0.6",
+      "mac": "00:00:00:00:00:06",
+      "dpid": 8,
+      "port": 4
+    }
+  ],
+  "switch_dpids": {
+    "s1": 1,
+    "s2": 2,
+    "s3": 3,
+    "s4": 4,
+    "s5": 5,
+    "s6": 6,
+    "s7": 7,
+    "s8": 8
+  }
+}

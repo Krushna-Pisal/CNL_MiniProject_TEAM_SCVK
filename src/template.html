@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI-Driven Adaptive Network Traffic Management using SDN &amp; ML</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#0B1220;
+    --panel:#101A2E;
+    --panel-2:#0D1526;
+    --line:#223252;
+    --text:#E7EEF7;
+    --muted:#8CA0BC;
+    --teal:#2DD4BF;
+    --amber:#F5A524;
+    --green:#34D399;
+    --red:#F87171;
+    --font-display:'Space Grotesk', sans-serif;
+    --font-body:'Inter', sans-serif;
+    --font-mono:'JetBrains Mono', monospace;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html{scroll-behavior:smooth;}
+  body{
+    background:
+      radial-gradient(1100px 500px at 15% -10%, rgba(45,212,191,0.10), transparent 60%),
+      radial-gradient(900px 500px at 100% 0%, rgba(245,165,36,0.07), transparent 55%),
+      var(--bg);
+    color:var(--text);
+    font-family:var(--font-body);
+    line-height:1.55;
+    -webkit-font-smoothing:antialiased;
+  }
+  a{color:var(--teal);}
+  .wrap{max-width:1180px; margin:0 auto; padding:0 28px;}
+  .eyebrow{
+    font-family:var(--font-mono); font-size:12.5px; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--teal); display:flex; align-items:center; gap:10px; margin-bottom:14px;
+  }
+  .eyebrow::before{content:""; width:7px; height:7px; border-radius:50%; background:var(--teal); box-shadow:0 0 0 4px rgba(45,212,191,.15); display:inline-block;}
+  h1,h2,h3{font-family:var(--font-display); font-weight:600; letter-spacing:-0.01em;}
+  h1{font-size:clamp(30px,4.6vw,52px); line-height:1.08; font-weight:700;}
+  h2{font-size:clamp(22px,2.8vw,30px); margin-bottom:6px;}
+  .section-sub{color:var(--muted); font-size:15px; max-width:640px; margin-bottom:34px;}
+  section{padding:70px 0;}
+  section.border-top{border-top:1px solid var(--line);}
+
+  /* ---------- NAV ---------- */
+  nav{
+    position:sticky; top:0; z-index:50; backdrop-filter:blur(10px);
+    background:rgba(11,18,32,0.82); border-bottom:1px solid var(--line);
+  }
+  nav .wrap{display:flex; align-items:center; justify-content:space-between; height:60px;}
+  .brand{font-family:var(--font-mono); font-size:14px; color:var(--text); display:flex; gap:9px; align-items:center;}
+  .brand b{color:var(--teal);}
+  nav .links{display:flex; gap:26px; font-size:13.5px; font-family:var(--font-mono);}
+  nav .links a{color:var(--muted); text-decoration:none;}
+  nav .links a:hover{color:var(--text);}
+
+  /* ---------- HERO ---------- */
+  .hero{padding:64px 0 20px;}
+  .hero-grid{display:grid; grid-template-columns:1.1fr 1fr; gap:48px; align-items:center;}
+  .hero p.lead{color:var(--muted); font-size:16.5px; max-width:520px; margin:18px 0 26px;}
+  .pill-row{display:flex; gap:10px; flex-wrap:wrap; margin-bottom:8px;}
+  .pill{
+    font-family:var(--font-mono); font-size:12px; color:var(--text); border:1px solid var(--line);
+    padding:6px 12px; border-radius:100px; background:var(--panel);
+  }
+  .stat-strip{display:flex; gap:28px; margin-top:34px; flex-wrap:wrap;}
+  .stat{font-family:var(--font-mono);}
+  .stat b{font-family:var(--font-display); display:block; font-size:28px; color:var(--teal); font-weight:700;}
+  .stat span{color:var(--muted); font-size:12.5px;}
+
+  /* animated topology signature */
+  .viz-card{
+    background:linear-gradient(180deg,var(--panel),var(--panel-2)); border:1px solid var(--line);
+    border-radius:16px; padding:18px; position:relative; overflow:hidden;
+  }
+  .viz-card .tag{font-family:var(--font-mono); font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; margin-bottom:8px; display:flex; justify-content:space-between;}
+  .viz-card .tag .dot-static{color:var(--amber);} .viz-card .tag .dot-adaptive{color:var(--teal);}
+  svg#flowsvg{width:100%; height:auto; display:block;}
+  .flow-dot{fill:var(--teal); filter:drop-shadow(0 0 5px rgba(45,212,191,.9));}
+  .flow-dot.static{fill:var(--amber); filter:drop-shadow(0 0 5px rgba(245,165,36,.85));}
+
+  /* ---------- CARDS / GRID ---------- */
+  .grid{display:grid; gap:20px;}
+  .grid-2{grid-template-columns:1fr 1fr;}
+  .grid-3{grid-template-columns:repeat(3,1fr);}
+  .card{
+    background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:24px;
+  }
+  .card h3{font-size:16px; margin-bottom:8px; color:var(--text);}
+  .card p{color:var(--muted); font-size:14px;}
+  .metric-num{font-family:var(--font-mono); font-size:34px; font-weight:700; color:var(--green); line-height:1;}
+  .metric-num.amber{color:var(--amber);}
+  .metric-label{color:var(--muted); font-size:12.5px; margin-top:8px; font-family:var(--font-mono); text-transform:uppercase; letter-spacing:.06em;}
+
+  /* ---------- ARCH DIAGRAM ---------- */
+  .arch{display:grid; grid-template-columns:repeat(5, 1fr); gap:0; align-items:stretch; margin-top:10px;}
+  .arch-step{background:var(--panel-2); border:1px solid var(--line); border-radius:12px; padding:16px 14px; position:relative;}
+  .arch-step .n{font-family:var(--font-mono); color:var(--teal); font-size:11px; letter-spacing:.1em;}
+  .arch-step h4{font-family:var(--font-display); font-size:14.5px; margin:6px 0 6px; font-weight:600;}
+  .arch-step p{color:var(--muted); font-size:12.5px;}
+  .arrow{align-self:center; text-align:center; color:var(--line); font-family:var(--font-mono); font-size:20px;}
+
+  /* ---------- topology image ---------- */
+  .topo-figure{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:14px; text-align:center;}
+  .topo-figure img{max-width:100%; border-radius:8px;}
+  .legend{display:flex; gap:22px; justify-content:center; margin-top:10px; font-family:var(--font-mono); font-size:12px; color:var(--muted);}
+  .legend span{display:inline-flex; align-items:center; gap:6px;}
+  .sw-dot{width:10px; height:10px; background:#2563eb; display:inline-block; border-radius:2px;}
+  .h-dot{width:10px; height:10px; background:#16a34a; display:inline-block; border-radius:50%;}
+
+  /* ---------- charts ---------- */
+  .chart-card{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:22px;}
+  .chart-card h3{font-size:15px; margin-bottom:2px;}
+  .chart-card .sub{color:var(--muted); font-size:12.5px; margin-bottom:16px;}
+  canvas{max-width:100%;}
+
+  /* ---------- table ---------- */
+  table{width:100%; border-collapse:collapse; font-family:var(--font-mono); font-size:13px;}
+  th,td{padding:10px 12px; text-align:center; border-bottom:1px solid var(--line);}
+  th{color:var(--muted); font-weight:500; text-transform:uppercase; font-size:11px; letter-spacing:.05em;}
+  td.diag{color:var(--green); font-weight:700;}
+  td.name{text-align:left; color:var(--muted); text-transform:capitalize;}
+
+  /* ---------- footer ---------- */
+  footer{border-top:1px solid var(--line); padding:32px 0; color:var(--muted); font-size:12.5px; font-family:var(--font-mono);}
+  footer .wrap{display:flex; justify-content:space-between; flex-wrap:wrap; gap:10px;}
+
+  @media (max-width:920px){
+    .hero-grid{grid-template-columns:1fr;}
+    .grid-2,.grid-3{grid-template-columns:1fr;}
+    .arch{grid-template-columns:1fr; }
+    .arrow{transform:rotate(90deg); padding:4px 0;}
+  }
+  @media (prefers-reduced-motion: reduce){
+    .flow-dot{animation:none !important;}
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <div class="brand"><b>SDN·AI</b> traffic-controller</div>
+    <div class="links">
+      <a href="#architecture">Architecture</a>
+      <a href="#topology">Topology</a>
+      <a href="#ml">ML Model</a>
+      <a href="#results">Results</a>
+      <a href="#realdeploy">Real Deployment</a>
+      <a href="#conclusion">Conclusion</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <div class="eyebrow">Computer Networks &middot; Mini Project</div>
+      <h1>AI-Driven Adaptive Network<br>Traffic Management using SDN &amp; ML</h1>
+      <p class="lead">A software-defined network controller that watches every flow, classifies it with machine learning, forecasts congestion before it happens, and reroutes traffic in real time &mdash; instead of routing blindly like a traditional static network.</p>
+      <div class="pill-row">
+        <span class="pill">Mininet-style topology</span>
+        <span class="pill">Random Forest classifier</span>
+        <span class="pill">Congestion forecasting</span>
+        <span class="pill">Adaptive Dijkstra routing</span>
+      </div>
+      <div class="stat-strip">
+        <div class="stat"><b>{{CLASSIFIER_ACC}}%</b><span>traffic classification accuracy</span></div>
+        <div class="stat"><b>{{LATENCY_IMP}}%</b><span>lower average latency</span></div>
+        <div class="stat"><b>{{DROP_RED}}%</b><span>fewer dropped / congested flows</span></div>
+      </div>
+    </div>
+    <div class="viz-card">
+      <div class="tag"><span>live simulated routing</span><span><span class="dot-static">&#9679;</span> static &nbsp; <span class="dot-adaptive">&#9679;</span> AI-adaptive</span></div>
+      <svg id="flowsvg" viewBox="0 0 480 300" xmlns="http://www.w3.org/2000/svg">
+        <!-- links -->
+        <g stroke="#223252" stroke-width="2" fill="none">
+          <path d="M40,150 L140,90"/>
+          <path d="M40,150 L140,210"/>
+          <path d="M140,90 L260,90"/>
+          <path d="M140,210 L260,210"/>
+          <path d="M260,90 L340,150"/>
+          <path d="M260,210 L340,150"/>
+          <path d="M340,150 L440,150"/>
+        </g>
+        <!-- congested link highlight -->
+        <path d="M140,90 L260,90" stroke="#F5A524" stroke-width="4" stroke-dasharray="6 5" opacity="0.85"/>
+        <!-- nodes -->
+        <g font-family="JetBrains Mono" font-size="10" fill="#8CA0BC">
+          <circle cx="40" cy="150" r="9" fill="#16a34a"/><text x="40" y="175" text-anchor="middle">h1</text>
+          <rect x="132" y="82" width="16" height="16" rx="3" fill="#2563eb"/><text x="140" y="72" text-anchor="middle">s2</text>
+          <rect x="132" y="202" width="16" height="16" rx="3" fill="#2563eb"/><text x="140" y="228" text-anchor="middle">s3</text>
+          <rect x="252" y="82" width="16" height="16" rx="3" fill="#2563eb"/><text x="260" y="72" text-anchor="middle">s4</text>
+          <rect x="252" y="202" width="16" height="16" rx="3" fill="#2563eb"/><text x="260" y="228" text-anchor="middle">s6</text>
+          <rect x="332" y="142" width="16" height="16" rx="3" fill="#2563eb"/><text x="340" y="132" text-anchor="middle">s7</text>
+          <circle cx="440" cy="150" r="9" fill="#16a34a"/><text x="440" y="175" text-anchor="middle">h6</text>
+        </g>
+        <!-- static flow: goes straight through the congested top link -->
+        <circle r="5" class="flow-dot static">
+          <animateMotion dur="3.2s" repeatCount="indefinite" path="M40,150 L140,90 L260,90 L340,150 L440,150"/>
+        </circle>
+        <!-- adaptive flow: detours around the congested link -->
+        <circle r="5" class="flow-dot">
+          <animateMotion dur="3.2s" repeatCount="indefinite" path="M40,150 L140,210 L260,210 L340,150 L440,150"/>
+        </circle>
+      </svg>
+      <div class="tag" style="margin-top:6px;"><span>amber dashed link = forecasted congestion</span><span></span></div>
+    </div>
+  </div>
+</header>
+
+<section class="border-top" id="architecture">
+  <div class="wrap">
+    <div class="eyebrow">01 &middot; System design</div>
+    <h2>How the controller thinks</h2>
+    <p class="section-sub">Every polling interval, the controller repeats a five-stage loop &mdash; the same loop a Ryu/ONOS application would run against real OpenFlow switches.</p>
+    <div class="arch">
+      <div class="arch-step"><div class="n">STEP 1</div><h4>Collect flow stats</h4><p>Switches report packet size, inter-arrival time, duration and demand for every active flow.</p></div>
+      <div class="arrow">&rarr;</div>
+      <div class="arch-step"><div class="n">STEP 2</div><h4>Classify traffic</h4><p>A Random Forest labels each flow as voice, video, web or bulk, and assigns a QoS priority.</p></div>
+      <div class="arrow">&rarr;</div>
+      <div class="arch-step"><div class="n">STEP 3</div><h4>Forecast congestion</h4><p>A regressor predicts next-interval utilization per link from recent history, before it saturates.</p></div>
+      <div class="arrow">&rarr;</div>
+      <div class="arch-step"><div class="n">STEP 4</div><h4>Compute adaptive paths</h4><p>Dijkstra re-weights every link by real-time load + forecast + flow priority, then re-routes.</p></div>
+      <div class="arrow">&rarr;</div>
+      <div class="arch-step"><div class="n">STEP 5</div><h4>Push flow rules</h4><p>New OpenFlow rules are installed on switches along the chosen path for that flow.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="border-top" id="topology">
+  <div class="wrap">
+    <div class="eyebrow">02 &middot; Testbed</div>
+    <h2>Simulated network topology</h2>
+    <p class="section-sub">8 OpenFlow switches in a partial mesh (so redundant paths actually exist), with 6 hosts generating traffic between them &mdash; modeled the same way it would be declared in Mininet.</p>
+    <div class="topo-figure">
+      <img src="data:image/png;base64,{{TOPOLOGY_B64}}" alt="Network topology diagram"/>
+      <div class="legend">
+        <span><i class="sw-dot"></i> OpenFlow switch</span>
+        <span><i class="h-dot"></i> Host</span>
+        <span>Labels = link capacity (Mbps)</span>
+      </div>
+    </div>
+    <div class="grid grid-3" style="margin-top:20px;">
+      <div class="card"><h3>{{N_SWITCHES}} switches</h3><p>SDN data-plane nodes, each holding OpenFlow flow tables pushed by the controller.</p></div>
+      <div class="card"><h3>{{N_HOSTS}} hosts</h3><p>Traffic sources/sinks generating voice, video, web and bulk-transfer flows.</p></div>
+      <div class="card"><h3>{{N_LINKS}} links</h3><p>Each with its own capacity and propagation delay, several forming alternate paths.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="border-top" id="ml">
+  <div class="wrap">
+    <div class="eyebrow">03 &middot; Machine learning</div>
+    <h2>Two models power the controller</h2>
+    <p class="section-sub">Both are trained offline on synthetic flow data with realistic per-application statistical signatures, then used online for every controller decision.</p>
+    <div class="grid grid-2">
+      <div class="card">
+        <h3>Traffic classifier &mdash; Random Forest</h3>
+        <p>Input features: average packet size, inter-arrival time, flow duration, demand (Mbps) and packet count. Output: application class + QoS priority.</p>
+        <div class="metric-num">{{CLASSIFIER_ACC}}%</div>
+        <div class="metric-label">held-out test accuracy</div>
+        <table style="margin-top:18px;">
+          <thead><tr><th>Class</th><th>Voice</th><th>Video</th><th>Web</th><th>Bulk</th></tr></thead>
+          <tbody id="cm-body"></tbody>
+        </table>
+      </div>
+      <div class="card">
+        <h3>Congestion predictor &mdash; RF Regressor</h3>
+        <p>Input: last 4 intervals of a link's utilization (%). Output: forecasted utilization for the next interval, used to steer new flows away before saturation happens.</p>
+        <div class="chart-card" style="border:none; padding:0; margin-top:14px;">
+          <canvas id="featureChart" height="190"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="border-top" id="results">
+  <div class="wrap">
+    <div class="eyebrow">04 &middot; Experiment</div>
+    <h2>Static routing vs. AI-adaptive routing</h2>
+    <p class="section-sub">Same topology, same generated traffic, simulated over {{N_INTERVALS}} controller intervals &mdash; only the routing strategy differs.</p>
+
+    <div class="grid grid-3" style="margin-bottom:22px;">
+      <div class="card"><div class="metric-num">{{LATENCY_IMP}}%</div><div class="metric-label">avg. latency reduced</div></div>
+      <div class="card"><div class="metric-num">{{PEAK_UTIL_RED}}%</div><div class="metric-label">peak link utilization reduced</div></div>
+      <div class="card"><div class="metric-num amber">{{STATIC_DROPS}} &rarr; {{ADAPTIVE_DROPS}}</div><div class="metric-label">congested / dropped flows, static &rarr; adaptive</div></div>
+    </div>
+
+    <div class="grid grid-2">
+      <div class="chart-card">
+        <h3>Average flow latency per interval</h3>
+        <div class="sub">Lower is better &mdash; includes queueing penalty once a link is saturated.</div>
+        <canvas id="latencyChart" height="230"></canvas>
+      </div>
+      <div class="chart-card">
+        <h3>Peak link utilization per interval</h3>
+        <div class="sub">Highest loaded link on the network, as a % of its capacity.</div>
+        <canvas id="utilChart" height="230"></canvas>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="border-top" id="realdeploy">
+  <div class="wrap">
+    <div class="eyebrow">05 &middot; Real deployment</div>
+    <h2>Validated on an actual SDN stack</h2>
+    <p class="section-sub">Beyond the simulation above, the same routing logic runs as a real controller against real Mininet switches, real Open vSwitch, and real OpenFlow 1.3 messages (via <code>os-ken</code>, the maintained Ryu-API-compatible framework). This is the captured output of an actual run: the <code>s2&ndash;s4</code> link is saturated with a real 60&nbsp;Mbps bulk transfer, then a new latency-sensitive flow is opened while that congestion is happening.</p>
+    <div class="grid grid-2">
+      <div class="card" style="border-color:#3a2a1a;">
+        <h3 style="color:var(--amber);">Static controller &mdash; blind to load</h3>
+        <pre style="font-family:var(--font-mono); font-size:12.5px; color:var(--muted); white-space:pre-wrap; margin-top:10px; line-height:1.7;">[static] 10.0.0.2 -> 10.0.0.4 routed via switches [2, 4, 7, 6]
+    <span style="color:var(--amber);">&larr; bulk transfer saturates link s2&ndash;s4</span>
+[static] 10.0.0.2 -> 10.0.0.5 routed via switches [2, 4, 7]
+    <span style="color:var(--amber);">&larr; new voice flow sent through it anyway</span></pre>
+      </div>
+      <div class="card" style="border-color:#123a34;">
+        <h3 style="color:var(--teal);">AI-adaptive controller &mdash; reacts to real telemetry</h3>
+        <pre style="font-family:var(--font-mono); font-size:12.5px; color:var(--muted); white-space:pre-wrap; margin-top:10px; line-height:1.7;">[adaptive] 10.0.0.2:55367 -> 10.0.0.4:5001 class=bulk priority=4 path=[2, 4, 7, 6]
+[adaptive][live-ML] flow classified as 'bulk'
+    (demand=61.50Mbps, pkt_size=1512B, duration=7.5s)
+[adaptive] 10.0.0.2:50331 -> 10.0.0.5:5060 class=voice priority=1 path=[2, 5, 7]
+    <span style="color:var(--teal);">&larr; rerouted around the congested link</span></pre>
+      </div>
+    </div>
+    <p class="section-sub" style="margin-top:20px; margin-bottom:0;">The <code>[live-ML]</code> line is the pretrained Random Forest classifier running on real byte/packet counters pulled mid-transfer from the switches via <code>OFPFlowStatsRequest</code> &mdash; not synthetic data. Full setup + how to reproduce this yourself: <code>mininet_sdn/README_MININET.md</code>.</p>
+  </div>
+</section>
+
+<section class="border-top" id="conclusion">
+  <div class="wrap">
+    <div class="eyebrow">05 &middot; Takeaways</div>
+    <h2>What this demonstrates</h2>
+    <div class="grid grid-3">
+      <div class="card"><h3>Traffic-aware routing works</h3><p>Knowing whether a flow is voice or bulk transfer &mdash; and treating it differently &mdash; measurably cuts latency for delay-sensitive traffic.</p></div>
+      <div class="card"><h3>Prediction beats reaction</h3><p>Forecasting link utilization one step ahead lets the controller avoid congestion before it happens, rather than after packets are already dropped.</p></div>
+      <div class="card"><h3>SDN makes it possible</h3><p>A centralized controller with a global view can recompute optimal paths per-flow in real time &mdash; something distributed static protocols like OSPF cannot do.</p></div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span>AI-Driven Adaptive Network Traffic Management &middot; SDN + ML simulation</span>
+    <span>Topology: networkx &middot; ML: scikit-learn &middot; Routing: Dijkstra (weighted)</span>
+  </div>
+</footer>
+
+<script>
+const DATA = {{RESULTS_JSON}};
+
+// --- confusion matrix table ---
+const labels = DATA.classifier.labels;
+const cm = DATA.classifier.confusion_matrix;
+const order = ["voice","video","web","bulk"];
+const idx = order.map(l => labels.indexOf(l));
+let rows = "";
+order.forEach((rowLabel, ri) => {
+  const i = idx[ri];
+  let cells = "";
+  order.forEach((colLabel, ci) => {
+    const j = idx[ci];
+    const val = cm[i][j];
+    cells += `<td class="${i===j ? 'diag' : ''}">${val}</td>`;
+  });
+  rows += `<tr><td class="name">${rowLabel}</td>${cells}</tr>`;
+});
+document.getElementById('cm-body').innerHTML = rows;
+
+const gridColor = "rgba(255,255,255,0.06)";
+const tickColor = "#8CA0BC";
+Chart.defaults.font.family = "JetBrains Mono";
+Chart.defaults.color = tickColor;
+
+// --- latency chart ---
+new Chart(document.getElementById('latencyChart'), {
+  type: 'line',
+  data: {
+    labels: DATA.intervals.map(i => 'T'+i),
+    datasets: [
+      { label: 'Static', data: DATA.avg_latency_static, borderColor:'#F5A524', backgroundColor:'transparent', tension:0.35, pointRadius:2 },
+      { label: 'AI-Adaptive', data: DATA.avg_latency_adaptive, borderColor:'#2DD4BF', backgroundColor:'transparent', tension:0.35, pointRadius:2 }
+    ]
+  },
+  options: {
+    responsive:true,
+    scales: {
+      x: { grid:{color:gridColor}, ticks:{maxTicksLimit:8} },
+      y: { grid:{color:gridColor}, title:{display:true,text:'ms'} }
+    },
+    plugins:{ legend:{ labels:{ usePointStyle:true } } }
+  }
+});
+
+// --- utilization chart ---
+new Chart(document.getElementById('utilChart'), {
+  type: 'line',
+  data: {
+    labels: DATA.intervals.map(i => 'T'+i),
+    datasets: [
+      { label: 'Static', data: DATA.max_util_static, borderColor:'#F5A524', backgroundColor:'rgba(245,165,36,0.08)', fill:true, tension:0.35, pointRadius:2 },
+      { label: 'AI-Adaptive', data: DATA.max_util_adaptive, borderColor:'#2DD4BF', backgroundColor:'rgba(45,212,191,0.10)', fill:true, tension:0.35, pointRadius:2 }
+    ]
+  },
+  options: {
+    responsive:true,
+    scales: {
+      x: { grid:{color:gridColor}, ticks:{maxTicksLimit:8} },
+      y: { grid:{color:gridColor}, title:{display:true,text:'% of link capacity'} }
+    },
+    plugins:{ legend:{ labels:{ usePointStyle:true } } }
+  }
+});
+
+// --- feature importance chart (for congestion predictor's sibling model, the classifier) ---
+const fi = DATA.classifier.feature_importance;
+const fiLabels = Object.keys(fi);
+const fiVals = Object.values(fi);
+new Chart(document.getElementById('featureChart'), {
+  type: 'bar',
+  data: {
+    labels: fiLabels,
+    datasets: [{ label:'Importance', data: fiVals, backgroundColor:'#2DD4BF', borderRadius:4 }]
+  },
+  options: {
+    indexAxis: 'y',
+    responsive:true,
+    plugins:{ legend:{ display:false }, title:{ display:true, text:'Classifier feature importance', color:'#8CA0BC', font:{size:12} } },
+    scales: { x:{ grid:{color:gridColor} }, y:{ grid:{display:false} } }
+  }
+});
+</script>
+
+</body>
+</html>

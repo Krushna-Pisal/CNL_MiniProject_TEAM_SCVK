@@ -1,0 +1,29 @@
+/home/claude/project/mininet_sdn/osken_run.py:12: EventletDeprecationWarning: 
+Eventlet is deprecated. It is currently being maintained in bugfix mode, and
+we strongly recommend against using it for new projects.
+
+If you are already using Eventlet, we recommend migrating to a different
+framework.  For more detail see
+https://eventlet.readthedocs.io/en/latest/asyncio/migration.html
+
+  import eventlet
+[adaptive] loaded pretrained traffic classifier
+[adaptive] loaded topology: 8 switches, 12 links, 6 hosts
+[adaptive] switch connected: dpid=1
+[adaptive] switch connected: dpid=2
+[adaptive] switch connected: dpid=3
+[adaptive] switch connected: dpid=4
+[adaptive] switch connected: dpid=5
+[adaptive] switch connected: dpid=6
+[adaptive] switch connected: dpid=7
+[adaptive] switch connected: dpid=8
+[adaptive] 10.0.0.2:55367 -> 10.0.0.4:5001 class=bulk priority=4 path=[2, 4, 7, 6]
+[adaptive][live-ML] flow classified as 'bulk' (demand=43.96Mbps, pkt_size=1512B, duration=1.5s)
+[adaptive][live-ML] flow classified as 'bulk' (demand=44.00Mbps, pkt_size=1512B, duration=1.5s)
+[adaptive][live-ML] flow classified as 'bulk' (demand=40.37Mbps, pkt_size=1512B, duration=1.5s)
+[adaptive][live-ML] flow classified as 'bulk' (demand=41.13Mbps, pkt_size=1512B, duration=1.5s)
+[adaptive] 10.0.0.2:50331 -> 10.0.0.5:5060 class=voice priority=1 path=[2, 5, 7]
+[adaptive][live-ML] flow classified as 'bulk' (demand=56.91Mbps, pkt_size=1512B, duration=7.5s)
+[adaptive][live-ML] flow classified as 'bulk' (demand=61.50Mbps, pkt_size=1512B, duration=7.5s)
+[adaptive][live-ML] flow classified as 'bulk' (demand=61.56Mbps, pkt_size=1512B, duration=7.5s)
+[adaptive][live-ML] flow classified as 'bulk' (demand=57.16Mbps, pkt_size=1512B, duration=7.5s)

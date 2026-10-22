@@ -1,0 +1,20 @@
+/home/claude/project/mininet_sdn/osken_run.py:12: EventletDeprecationWarning: 
+Eventlet is deprecated. It is currently being maintained in bugfix mode, and
+we strongly recommend against using it for new projects.
+
+If you are already using Eventlet, we recommend migrating to a different
+framework.  For more detail see
+https://eventlet.readthedocs.io/en/latest/asyncio/migration.html
+
+  import eventlet
+[static] loaded topology: 8 switches, 12 links, 6 hosts
+[static] switch connected: dpid=1
+[static] switch connected: dpid=2
+[static] switch connected: dpid=3
+[static] switch connected: dpid=4
+[static] switch connected: dpid=5
+[static] switch connected: dpid=6
+[static] switch connected: dpid=7
+[static] switch connected: dpid=8
+[static] 10.0.0.2 -> 10.0.0.4 routed via switches [2, 4, 7, 6]
+[static] 10.0.0.2 -> 10.0.0.5 routed via switches [2, 4, 7]
