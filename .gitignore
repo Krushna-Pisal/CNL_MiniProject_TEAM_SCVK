@@ -1,0 +1,8 @@
+__pycache__/
+*.py[cod]
+
+# Generated live Mininet state / logs
+mininet_sdn/network_config_enterprise.json
+mininet_sdn/controller_*.log
+results/mininet_failover_latest.json
+results/mininet_policy_latest.json

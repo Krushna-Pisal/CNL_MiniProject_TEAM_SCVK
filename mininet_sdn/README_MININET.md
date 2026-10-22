@@ -88,6 +88,62 @@ measured throughput.
 └── sample_run_logs/            real captured output from an actual run, as a fallback
 ```
 
+## Enterprise VLAN / security / failover mode
+
+The original six-host demo is still the default. Enterprise mode is opt-in
+and reuses the eight switches while adding 14 department, branch, and service
+hosts plus three redundant switch links. Sites are HQ (s1-s4), Branch 1
+(s5, s7), and Branch 2 (s6, s8). Host links are OVS access ports; switch
+links carry VLANs 10, 20, 30, 40, 41, 50, and 99 as trunks.
+
+| VLAN | Segment | Subnet / gateway |
+|---:|---|---|
+| 10 | Administration | 10.10.10.0/24 · 10.10.10.1 |
+| 20 | Finance | 10.10.20.0/24 · 10.10.20.1 |
+| 30 | IT | 10.10.30.0/24 · 10.10.30.1 |
+| 40 | Branch 1 users | 10.10.40.0/24 · 10.10.40.1 |
+| 41 | Branch 2 users | 10.10.41.0/24 · 10.10.41.1 |
+| 50 | Shared service endpoints | 10.10.50.0/24 · 10.10.50.1 |
+| 99 | Management | 10.10.99.0/24 · 10.10.99.1 |
+
+Static controller-proxied gateway addresses make the separate subnets
+reachable through the central OpenFlow controller. A default-deny policy is
+enforced before IPv4 routes are installed. Branches may use DNS (TCP/UDP 53)
+and HTTP(S) (TCP 80/443); finance may use the finance endpoint (TCP 8443);
+admin/finance may use the file endpoint (TCP 21); admin/IT may use
+management. Branch-to-branch ICMP is permitted; other inter-branch traffic
+is denied. Authorized service replies are allowed by service role and source
+port. The policy code is shared with the Python enterprise experiment.
+
+Run both controller variants and live integration checks from this directory
+on Ubuntu/Debian as root:
+
+```bash
+pip install -r requirements.txt
+python3 train_models.py
+sudo ./run_enterprise_demo.sh static
+sudo ./run_enterprise_demo.sh adaptive
+```
+
+The runner generates `network_config_enterprise.json` from actual Mininet
+port assignments before starting the controller. The policy test starts HTTP
+servers on h9 (port 80) and h11 (port 8443), verifies permitted cross-VLAN
+requests, checks allowed branch/IT traffic, and checks denied access. The
+failover test runs continuous ping from h4 to h6, disables and restores
+s5-s8, and records packet loss, first successful reply after restoration,
+and controller link/route event timestamps. Results are saved to
+`../results/mininet_failover_latest.json`; controller events are recorded in
+`controller_enterprise.log`. The measured policy and failover payloads are
+also embedded in the self-contained root dashboard after each script runs.
+
+This live path has not been executed on Windows. Use the Linux integration
+run to measure actual detection, route recomputation, and recovery time; the
+Python enterprise graph run reports only logical alternate paths. LLDP is
+not implemented: the controller updates its known graph from OpenFlow port
+status events. IP addresses are static. DHCP and DNS/file-transfer daemons
+are not configured; h8/h10 are reserved endpoint roles, while this demo
+starts HTTP only for its access-control checks.
+
 ## Honest limitations / Future Work
 
 - **Topology is hardcoded**, not discovered via LLDP. A production controller

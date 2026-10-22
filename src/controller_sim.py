@@ -41,9 +41,58 @@ def path_delay_ms(G, path, extra_penalty=0.0):
     return delay + extra_penalty
 
 
-def simulate(n_intervals=20, flows_per_interval=14, seed=7):
+def static_route_cost(edge_data):
+    """Delay-only edge cost shared by the interval and packet simulations."""
+    return edge_data["base_delay_ms"]
+
+
+def adaptive_route_cost(edge_data, current_ratio, predicted_ratio, priority):
+    """Existing congestion-aware edge cost, shared by both simulation views."""
+    priority_factor = {1: 1.6, 2: 1.3, 3: 1.0, 4: 0.7}[priority]
+    congestion_term = (max(0.0, current_ratio) ** 3) * 35
+    forecast_term = (max(0.0, predicted_ratio) ** 3) * 12
+    return edge_data["base_delay_ms"] + (congestion_term + forecast_term) * priority_factor
+
+
+def select_flow_route(graph, src, dst, routing_mode="adaptive", priority=3,
+                      link_load_mbps=None, predicted_utilization_pct=None,
+                      failed_links=None):
+    """Select one route with the same costs used by the interval simulation.
+
+    `link_load_mbps` and `predicted_utilization_pct` are explicit simulation
+    inputs. Failed links are omitted from the graph copy; no live state is
+    implied by this helper.
+    """
+    if src not in graph or dst not in graph:
+        raise nx.NodeNotFound(f"Unknown endpoint: {src if src not in graph else dst}")
+    view = graph.copy()
+    for u, v in failed_links or []:
+        if view.has_edge(u, v):
+            view.remove_edge(u, v)
+    if not nx.has_path(view, src, dst):
+        raise nx.NetworkXNoPath(f"No route from {src} to {dst}")
+    if routing_mode == "static":
+        weight = lambda u, v, data: static_route_cost(data)
+    elif routing_mode == "adaptive":
+        loads = link_load_mbps or {}
+        forecast = predicted_utilization_pct or {}
+        def weight(u, v, data):
+            edge = frozenset((u, v))
+            capacity = data["capacity_mbps"]
+            current_ratio = loads.get(edge, 0.0) / capacity
+            predicted_ratio = forecast.get(edge, 0.0) / 100.0
+            return adaptive_route_cost(data, current_ratio, predicted_ratio, priority)
+    else:
+        raise ValueError("routing_mode must be 'static' or 'adaptive'")
+    return nx.shortest_path(view, src, dst, weight=weight)
+
+
+def simulate(n_intervals=20, flows_per_interval=14, seed=7, topology=None, host_pairs=None):
     rng = np.random.default_rng(seed)
-    G = build_topology()
+    # Optional graph/pair parameters enable the enterprise experiment while
+    # keeping the original baseline defaults and call signature intact.
+    G = build_topology() if topology is None else topology.copy()
+    host_pairs = HOST_PAIRS if host_pairs is None else host_pairs
     edges = list(G.edges())
 
     # independent utilization state per strategy (bytes accumulated -> reset each interval)
@@ -102,7 +151,7 @@ def simulate(n_intervals=20, flows_per_interval=14, seed=7):
         # cost never changes with traffic already placed, so many flows
         # pile onto the same "shortest" path even after it gets congested.
         def static_weight(u, v, d):
-            return d["base_delay_ms"]
+            return static_route_cost(d)
 
         for _, flow in flows.iterrows():
             src, dst, demand = flow["src"], flow["dst"], flow["demand_mbps"]
@@ -133,11 +182,7 @@ def simulate(n_intervals=20, flows_per_interval=14, seed=7):
                 e = norm_edge(u, v, load_adaptive)
                 util_ratio = load_adaptive[e] / cap[e]                    # reactive: load placed so far this interval
                 predicted_ratio = forecast[norm_edge(u, v, forecast)] / 100.0  # proactive: ML trend forecast
-                base = d["base_delay_ms"]
-                congestion_term = (max(0.0, util_ratio) ** 3) * 35
-                forecast_term = (max(0.0, predicted_ratio) ** 3) * 12
-                priority_factor = {1: 1.6, 2: 1.3, 3: 1.0, 4: 0.7}[priority]
-                return base + (congestion_term + forecast_term) * priority_factor
+                return adaptive_route_cost(d, util_ratio, predicted_ratio, priority)
 
             path_a = nx.shortest_path(G, src, dst, weight=adaptive_weight)
             for u, v in zip(path_a[:-1], path_a[1:]):
